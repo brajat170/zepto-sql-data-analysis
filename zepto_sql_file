@@ -1,0 +1,264 @@
+drop table if exists zepto;
+
+create table zepto(
+sku_id SERIAL PRIMARY KEY,
+category VARCHAR(120),
+name VARCHAR(150) NOT NULL,
+mrp NUMERIC (8,2),
+discountPercent NUMERIC (5,2),
+availableQuantity INTEGER,
+discountedSellingPrice NUMERIC (8,2),
+weightInGms INTEGER,
+outOfStock BOOLEAN,
+quantity INTEGER
+);
+
+-- data exploration
+
+select count(*) from zepto;
+
+-- sample data 
+select * from zepto;
+
+-- null values
+
+select * from zepto
+where name IS NULL 
+OR
+category IS NULL
+OR
+mrp IS NULL
+OR
+discountPercent IS NULL
+OR
+availableQuantity IS NULL
+OR
+weightInGms IS NULL
+OR
+outOfStock IS NULL
+OR
+quantity IS NULL;
+
+-- different product categories
+
+SELECT DISTINCT category FROM zepto
+ORDER BY category;
+
+-- products in stock vs out of stock
+
+select outofstock, count(sku_id)
+from zepto
+group by outofstock;
+
+-- product names present multipe times
+select name, count(sku_id) as "Number of skus"
+from zepto
+group by name
+having count(sku_id) > 1
+order by count(sku_id) desc;
+
+-- data cleaning
+
+-- product price with 0 mrp
+
+select * from zepto 
+where mrp = 0 or discountedSellingPrice = 0;
+
+DELETE FROM zepto 
+WHERE mrp = 0;
+
+-- convert paise to rupees
+
+update zepto 
+set mrp=mrp/100.0,
+discountedSellingPrice = discountedSellingPrice/100.0;
+
+select mrp, discountedSellingPrice from zepto; -- converted to rupees
+
+-- Q1. Find the top 10 best-value products based on the discount percentage.
+SELECT DISTINCT name, mrp, discountPercent
+FROM zepto
+ORDER BY discountPercent DESC
+LIMIT 10;
+
+-- Q2. What are the Products with High MRP but Out of Stock
+SELECT DISTINCT name, mrp
+FROM zepto
+WHERE outofstock = TRUE AND mrp > 300
+ORDER BY mrp DESC;
+
+-- Q3. Calculate Estimated Revenue for each category
+
+SELECT category,
+SUM(discountedSellingPrice * availableQuantity) AS total_revenue
+FROM zepto
+GROUP BY category
+ORDER BY total_revenue;
+
+-- Q4. Find all products where MRP is greater than ₹500 and discount is less than 10%.
+
+SELECT DISTINCT name, mrp, discountPercent
+FROM zepto
+WHERE mrp > 500 and discountPercent < 10
+order by mrp desc, discountPercent desc;
+
+-- Q5. Identify the top 5 categories offering the highest average discount percentage.
+
+select * from zepto;
+
+select category, ROUND(AVG(discountPercent), 2) AS avg_discount
+from zepto
+GROUP BY category
+ORDER BY avg_discount desc
+LIMIT 5;
+
+-- Q6. Find the price per gram for products above 100g and sort by best value.
+
+select distinct name, weightInGms, discountedSellingPrice,
+ROUND(discountedSellingPrice/weightInGms,2) as price_per_gram
+from zepto
+where weightInGms >= 100
+order by price_per_gram;
+
+
+-- Q7. Group the products into categories like Low, Medium, Bulk.
+
+select distinct name, weightInGms,
+case when weightInGms < 1000 then 'Low'
+	 when weightInGms between 1001 and 5000 then 'Medium'
+	 else 'Bulk' 
+	 end as weight_category
+from zepto;
+
+-- Q8. What is the Total Inventory Weight Per Category
+
+select category, 
+sum(weightInGms * availableQuantity) as total_weight
+from zepto
+group by category
+order by total_weight;
+
+-- Q9. Find the category with the maximum total stock value based on discounted selling price and available quantity.
+
+SELECT category, 
+sum(discountedSellingPrice * availablequantity) as total_stock_value
+FROM ZEPTO
+GROUP BY category
+order by total_stock_value desc;
+
+-- Q10. Find the top 5 most expensive products (by MRP) in each category.
+
+select category, name, mrp
+from (
+		select category, name, mrp,
+		row_number() over(partition by category order by mrp) as rn
+		from zepto
+		) ranked
+where rn <= 5;
+
+-- Q11. Calculate the average MRP, discounted price, and discount percentage for each category.
+
+select * from zepto;
+
+select category,
+ROUND(AVG(mrp),2) as average_mrp, 
+ROUND(AVG(discountedsellingprice), 2) as average_discount_price, 
+ROUND(AVG(discountpercent), 2) as average_discount
+from zepto
+group by category
+order by category;
+
+
+-- Q12. Identify products where the discounted selling price is greater than the MRP (data inconsistency check).
+select * from zepto
+where discountedsellingprice > mrp;
+
+-- Q13. Find the most common product weight (in grams) across all products.
+
+select weightInGms, count(*) as most_common_product_weight
+from zepto
+group by weightInGms
+order by most_common_product_weight desc
+limit 1;
+
+-- Q14. Determine the category having the lowest total available quantity.
+select category, 
+sum(availablequantity) as lowest_quantity 
+from zepto
+group by category
+order by lowest_quantity
+limit 1;
+
+-- Q15. Find all products that have a discount higher than the average discount of their category.
+
+select category, ROUND(avg(discountedsellingprice), 2)
+from zepto
+GROUP BY category
+HAVING AVG(discountedSellingPrice) > (
+    SELECT AVG(discountedSellingPrice) FROM zepto
+);
+
+
+-- Q16. Identify products that contribute the most to overall revenue (top 10 by revenue share).
+
+select * from zepto;
+
+WITH revenue_cte AS (
+    SELECT 
+        name,
+        category,
+        (discountedSellingPrice * availableQuantity) AS product_revenue
+    FROM zepto
+),
+total_cte AS (
+    SELECT SUM(product_revenue) AS total_revenue
+    FROM revenue_cte
+)
+SELECT 
+    r.name,
+    r.category,
+    r.product_revenue,
+    ROUND((r.product_revenue / t.total_revenue) * 100, 2) AS revenue_share_percent
+FROM revenue_cte r, total_cte t
+ORDER BY r.product_revenue DESC
+LIMIT 10;
+
+
+-- Q17. Find the percentage of out-of-stock products in each category.
+
+WITH stock_stats AS (
+    SELECT 
+        category,
+        COUNT(*) AS total_products,
+        SUM(CASE WHEN outofstock = TRUE THEN 1 ELSE 0 END) AS out_of_stock_products
+    FROM zepto
+    GROUP BY category
+)
+SELECT 
+    category,
+    total_products,
+    out_of_stock_products,
+    ROUND((out_of_stock_products::numeric / total_products) * 100, 2) AS out_of_stock_percent
+FROM stock_stats
+ORDER BY out_of_stock_percent DESC; 
+--::numeric → converts the value to a numeric type so division works correctly and gives decimals (not integers).
+
+-- Q18. List categories where the average selling price per gram exceeds ₹2.
+
+WITH price_per_gram AS (
+    SELECT 
+        category,
+        AVG(discountedSellingPrice / weightInGms) AS avg_price_per_gram
+    FROM zepto
+    WHERE weightInGms > 0
+    GROUP BY category
+)
+SELECT 
+    category,
+    ROUND(avg_price_per_gram, 2) AS avg_price_per_gram
+FROM price_per_gram
+WHERE avg_price_per_gram > 2
+ORDER BY avg_price_per_gram DESC;
+
+
+
