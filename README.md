@@ -1,1 +1,0 @@
-# zepto-sql-data-analysis
