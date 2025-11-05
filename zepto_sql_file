@@ -37,7 +37,9 @@ weightInGms IS NULL
 OR
 outOfStock IS NULL
 OR
-quantity IS NULL;
+quantity IS NULL
+OR
+discountedSellingPrice IS NULL;
 
 -- different product categories
 
